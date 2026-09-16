@@ -1,9 +1,10 @@
-import { Loader, MoreHorizontal, Plus } from "lucide-react";
+import { Loader, MoreHorizontal } from "lucide-react";
 import { ShimmerTask } from "./shimmer-task";
 import { Task } from "./task";
 import type { TaskRecord } from "@/lib/tasks";
 import type { TaskStatus } from "@/lib/tasks";
 import { TaskDropZone } from "./task-drop-zone";
+import { CreateTaskDialog } from "./create-task-dialog";
 
 interface SectionProps {
   status: TaskStatus;
@@ -36,9 +37,10 @@ export function Section({
           <button type="button" className="rounded-md p-1 hover:bg-secondary">
             <MoreHorizontal className="size-4" />
           </button>
-          <button type="button" className="rounded-md p-1 hover:bg-secondary">
-            <Plus className="size-4" />
-          </button>
+          <CreateTaskDialog
+            status={status}
+            position={Math.max(0, ...tasks.map((task) => task.position)) + 1}
+          />
         </div>
       </header>
 

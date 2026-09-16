@@ -22,6 +22,7 @@ interface BoardState extends Buckets {
   error: string | null;
   fetchBoard: () => Promise<void>;
   updateTask: (task: TaskRecord) => void;
+  removeTask: (taskId: string) => void;
   moveTask: (taskId: string, status: TaskStatus, index: number) => TaskMovePatch[];
 }
 
@@ -46,6 +47,15 @@ export const useBoardStore = create<BoardState>((set, get) => ({
       // Keep each column in the same order as the server-side position values.
       for (const status of STATUSES) {
         next[status].sort((a, b) => a.position - b.position);
+      }
+      return next;
+    });
+  },
+  removeTask: (taskId) => {
+    set((state) => {
+      const next = emptyBuckets();
+      for (const status of STATUSES) {
+        next[status] = state[status].filter((task) => task.id !== taskId);
       }
       return next;
     });

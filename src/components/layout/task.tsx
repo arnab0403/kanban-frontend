@@ -1,7 +1,7 @@
 "use client";
 
 import { useState, type FormEvent } from "react";
-import { Pencil, Loader } from "lucide-react";
+import { Loader, Pencil, Trash2 } from "lucide-react";
 import type { TaskPriority, TaskRecord, TaskStatus } from "@/lib/tasks";
 import { useBoardStore } from "@/store/board";
 import { Button } from "@/components/ui/button";
@@ -23,11 +23,16 @@ const editableFields = [
 
 export function Task({ task, index }: { task: TaskRecord; index: number }) {
   const draggableRef = useTaskDraggable(task.id, task.status, index);
+  const displayTitle =
+    task.title.length > 25 ? `${task.title.slice(0, 25)}...` : task.title;
   const [open, setOpen] = useState(false);
   const [draft, setDraft] = useState(task);
   const [saving, setSaving] = useState(false);
   const [saveError, setSaveError] = useState<string | null>(null);
+  const [deleting, setDeleting] = useState(false);
+  const [deleteError, setDeleteError] = useState<string | null>(null);
   const updateTask = useBoardStore((state) => state.updateTask);
+  const removeTask = useBoardStore((state) => state.removeTask);
 
   function openEditor() {
     setDraft(task);
@@ -84,20 +89,61 @@ export function Task({ task, index }: { task: TaskRecord; index: number }) {
     }
   }
 
+  async function handleDelete() {
+    setDeleting(true);
+    setDeleteError(null);
+
+    try {
+      const response = await fetch(`${process.env.NEXT_PUBLIC_API_URL}/api/tasks/${task.id}`, {
+        method: "DELETE",
+      });
+
+      if (!response.ok) {
+        throw new Error(`Task deletion failed with ${response.status}`);
+      }
+
+      removeTask(task.id);
+    } catch (error) {
+      setDeleteError(error instanceof Error ? error.message : "Failed to delete task");
+    } finally {
+      setDeleting(false);
+    }
+  }
+
   return (
     <>
       <div ref={draggableRef} className="touch-none cursor-grab active:cursor-grabbing">
-        <div data-task-card className="flex flex-col gap-3 rounded-xl bg-task p-4 transition-[transform,box-shadow] duration-150">
+        <div data-task-card className="group/task flex flex-col gap-3 rounded-xl bg-task p-4 transition-[transform,box-shadow] duration-150">
         <div className="flex items-start justify-between gap-3">
           <div className="flex flex-col gap-1">
             <span className="text-xs text-muted-foreground">DEMO-{task.id}</span>
             <div className="flex items-center gap-2">
               <Loader className="size-4 shrink-0 text-muted-foreground" />
-              <p className="text-sm font-medium text-foreground">{task.title}</p>
+              <p className="text-sm font-medium text-foreground" title={task.title}>
+                {displayTitle}
+              </p>
             </div>
           </div>
-          <Button type="button" variant="ghost" size="icon-sm" aria-label={`Edit ${task.title}`} onClick={openEditor}>
-            <Pencil />
+          <Button
+            type="button"
+            variant="ghost"
+            size="icon-sm"
+            className="cursor-pointer ml-auto opacity-0 transition-opacity group-hover/task:opacity-100 group-focus-within/task:opacity-100"
+            aria-label={`Edit ${task.title}`}
+            onClick={openEditor}
+          >
+            <Pencil className="text-neutral-400" />
+          </Button>
+          <Button
+            type="button"
+            variant="destructive"
+            size="icon-sm"
+            className="cursor-pointer opacity-0 transition-opacity group-hover/task:opacity-100 group-focus-within/task:opacity-100"
+            aria-label={`Delete ${task.title}`}
+            onClick={handleDelete}
+            disabled={deleting}
+          >
+            <Trash2 />
           </Button>
         </div>
 
@@ -110,6 +156,7 @@ export function Task({ task, index }: { task: TaskRecord; index: number }) {
         <span className="text-xs text-muted-foreground">
           Updated {new Date(task.updatedAt).toLocaleDateString("en-US", { month: "short", day: "numeric", year: "numeric" })}
         </span>
+        {deleteError && <p className="text-xs text-destructive">{deleteError}</p>}
         </div>
       </div>
 
