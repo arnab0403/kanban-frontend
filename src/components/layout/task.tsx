@@ -31,8 +31,10 @@ export function Task({ task, index }: { task: TaskRecord; index: number }) {
   const [saveError, setSaveError] = useState<string | null>(null);
   const [deleting, setDeleting] = useState(false);
   const [deleteError, setDeleteError] = useState<string | null>(null);
-  const updateTask = useBoardStore((state) => state.updateTask);
-  const removeTask = useBoardStore((state) => state.removeTask);
+  const beginTaskMutation = useBoardStore((state) => state.beginTaskMutation);
+  const completeTaskMutation = useBoardStore((state) => state.completeTaskMutation);
+  const completeTaskDeletion = useBoardStore((state) => state.completeTaskDeletion);
+  const failTaskMutation = useBoardStore((state) => state.failTaskMutation);
 
   function openEditor() {
     setDraft(task);
@@ -61,6 +63,7 @@ export function Task({ task, index }: { task: TaskRecord; index: number }) {
       return;
     }
 
+    beginTaskMutation(task.id);
     try {
       const response = await fetch(`${process.env.NEXT_PUBLIC_API_URL}/api/tasks/${task.id}`, {
         method: "PATCH",
@@ -72,17 +75,10 @@ export function Task({ task, index }: { task: TaskRecord; index: number }) {
         throw new Error(`Task update failed with ${response.status}`);
       }
 
-      const responseText = await response.text();
-      const savedTask = responseText ? (JSON.parse(responseText) as Partial<TaskRecord>) : {};
-      updateTask({
-        ...task,
-        ...draft,
-        ...savedTask,
-        id: task.id,
-        updatedAt: savedTask.updatedAt ?? new Date().toISOString(),
-      });
+      completeTaskMutation((await response.json()) as TaskRecord);
       setOpen(false);
     } catch (error) {
+      failTaskMutation(task.id);
       setSaveError(error instanceof Error ? error.message : "Failed to update task");
     } finally {
       setSaving(false);
@@ -92,6 +88,7 @@ export function Task({ task, index }: { task: TaskRecord; index: number }) {
   async function handleDelete() {
     setDeleting(true);
     setDeleteError(null);
+    beginTaskMutation(task.id);
 
     try {
       const response = await fetch(`${process.env.NEXT_PUBLIC_API_URL}/api/tasks/${task.id}`, {
@@ -102,8 +99,9 @@ export function Task({ task, index }: { task: TaskRecord; index: number }) {
         throw new Error(`Task deletion failed with ${response.status}`);
       }
 
-      removeTask(task.id);
+      completeTaskDeletion(task.id);
     } catch (error) {
+      failTaskMutation(task.id);
       setDeleteError(error instanceof Error ? error.message : "Failed to delete task");
     } finally {
       setDeleting(false);

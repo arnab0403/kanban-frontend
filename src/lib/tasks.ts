@@ -9,5 +9,6 @@ export interface TaskRecord {
   assignee: string;
   status: TaskStatus;
   position: number;
+  version: number;
   updatedAt: string;
 }

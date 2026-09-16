@@ -2,6 +2,7 @@
 
 import { useCallback, useEffect, useState } from "react";
 import type { TaskStatus } from "@/lib/tasks";
+import { useBoardEvents } from "@/hooks/use-board-events";
 import { useBoardStore } from "@/store/board";
 import { Assignee } from "./assignee";
 import { BoardDndProvider } from "./board-dnd";
@@ -35,7 +36,10 @@ function BoardColumn({ status, title }: { status: TaskStatus; title: string }) {
 export function Board() {
   const fetchBoard = useBoardStore((state) => state.fetchBoard);
   const moveTask = useBoardStore((state) => state.moveTask);
-  const updateTask = useBoardStore((state) => state.updateTask);
+  const beginTaskMutation = useBoardStore((state) => state.beginTaskMutation);
+  const completeTaskMutation = useBoardStore((state) => state.completeTaskMutation);
+  const failTaskMutation = useBoardStore((state) => state.failTaskMutation);
+  const hasLoaded = useBoardStore((state) => state.hasLoaded);
   const error = useBoardStore((state) => state.error);
   const [dragError, setDragError] = useState<string | null>(null);
 
@@ -43,34 +47,41 @@ export function Board() {
     fetchBoard();
   }, [fetchBoard]);
 
+  useBoardEvents(hasLoaded);
+
   const handleDrop = useCallback(async (taskId: string, status: TaskStatus, index: number) => {
     setDragError(null);
     const patches = moveTask(taskId, status, index);
     if (patches.length === 0) return;
 
+    patches.forEach(({ id }) => beginTaskMutation(id));
+
     try {
-      const savedTasks = await Promise.all(
+      await Promise.all(
         patches.map(async ({ id, changes }) => {
-          const response = await fetch(`${process.env.NEXT_PUBLIC_API_URL}/api/tasks/${id}`, {
-            method: "PATCH",
-            headers: { "Content-Type": "application/json" },
-            body: JSON.stringify(changes),
-          });
+          try {
+            const response = await fetch(`${process.env.NEXT_PUBLIC_API_URL}/api/tasks/${id}`, {
+              method: "PATCH",
+              headers: { "Content-Type": "application/json" },
+              body: JSON.stringify(changes),
+            });
 
-          if (!response.ok) {
-            throw new Error(`Task update failed with ${response.status}`);
+            if (!response.ok) {
+              throw new Error(`Task update failed with ${response.status}`);
+            }
+
+            completeTaskMutation(await response.json());
+          } catch (error) {
+            failTaskMutation(id);
+            throw error;
           }
-
-          return response.json();
         })
       );
-
-      savedTasks.forEach(updateTask);
     } catch (dropError) {
       setDragError(dropError instanceof Error ? dropError.message : "Failed to move task");
       await fetchBoard();
     }
-  }, [fetchBoard, moveTask, updateTask]);
+  }, [beginTaskMutation, completeTaskMutation, failTaskMutation, fetchBoard, moveTask]);
 
   return (
     <BoardDndProvider onDrop={handleDrop}>

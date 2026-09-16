@@ -17,12 +17,28 @@ export interface TaskMovePatch {
   changes: Partial<Pick<TaskRecord, "status" | "position">>;
 }
 
+type QueuedRemoteEvent =
+  | { type: "upsert"; task: TaskRecord }
+  | { type: "delete"; id: string };
+
+// Mutation tracking stays outside Zustand's reactive state because it is only
+// used to coordinate HTTP responses with SSE events and should not rerender UI.
+const pendingMutationCounts = new Map<string, number>();
+const queuedRemoteEvents = new Map<string, QueuedRemoteEvent>();
+
 interface BoardState extends Buckets {
   loading: boolean;
   error: string | null;
+  hasLoaded: boolean;
   fetchBoard: () => Promise<void>;
   updateTask: (task: TaskRecord) => void;
   removeTask: (taskId: string) => void;
+  beginTaskMutation: (taskId: string) => void;
+  completeTaskMutation: (task: TaskRecord) => void;
+  completeTaskDeletion: (taskId: string) => void;
+  failTaskMutation: (taskId: string) => void;
+  receiveRemoteTask: (task: TaskRecord) => void;
+  receiveRemoteDeletion: (taskId: string) => void;
   moveTask: (taskId: string, status: TaskStatus, index: number) => TaskMovePatch[];
 }
 
@@ -30,12 +46,48 @@ function emptyBuckets(): Buckets {
   return { todo: [], "in-progress": [], done: [], backlog: [] };
 }
 
+function isSupportedStatus(status: TaskStatus) {
+  return STATUSES.includes(status);
+}
+
+function findTask(state: Buckets, taskId: string) {
+  for (const status of STATUSES) {
+    const task = state[status].find((currentTask) => currentTask.id === taskId);
+    if (task) return task;
+  }
+}
+
+function beginMutation(taskId: string) {
+  pendingMutationCounts.set(taskId, (pendingMutationCounts.get(taskId) ?? 0) + 1);
+}
+
+function releaseMutation(taskId: string) {
+  const remaining = (pendingMutationCounts.get(taskId) ?? 1) - 1;
+  if (remaining > 0) {
+    pendingMutationCounts.set(taskId, remaining);
+    return;
+  }
+
+  pendingMutationCounts.delete(taskId);
+  const queuedEvent = queuedRemoteEvents.get(taskId);
+  queuedRemoteEvents.delete(taskId);
+  return queuedEvent;
+}
+
 export const useBoardStore = create<BoardState>((set, get) => ({
   ...emptyBuckets(),
   loading: false,
   error: null,
+  hasLoaded: false,
   updateTask: (task) => {
+    if (!isSupportedStatus(task.status)) return;
+
     set((state) => {
+      // A lower version is stale, while an equal version is an SSE/API echo
+      // that has already been applied.
+      const currentTask = findTask(state, task.id);
+      if (currentTask && currentTask.version >= task.version) return state;
+
       // Remove the old copy from every bucket because the task's status may
       // have changed, then insert the latest server copy into its new bucket.
       const next = emptyBuckets();
@@ -59,6 +111,61 @@ export const useBoardStore = create<BoardState>((set, get) => ({
       }
       return next;
     });
+  },
+  beginTaskMutation: (taskId) => {
+    beginMutation(taskId);
+  },
+  completeTaskMutation: (task) => {
+    get().updateTask(task);
+    const queuedEvent = releaseMutation(task.id);
+    if (!queuedEvent) return;
+
+    if (queuedEvent.type === "delete") {
+      get().removeTask(queuedEvent.id);
+    } else {
+      get().updateTask(queuedEvent.task);
+    }
+  },
+  completeTaskDeletion: (taskId) => {
+    // A successful DELETE is authoritative. Discard queued updates because
+    // they were emitted before the server confirmed that the task is gone.
+    get().removeTask(taskId);
+    pendingMutationCounts.delete(taskId);
+    queuedRemoteEvents.delete(taskId);
+  },
+  failTaskMutation: (taskId) => {
+    const queuedEvent = releaseMutation(taskId);
+    if (!queuedEvent) return;
+
+    if (queuedEvent.type === "delete") {
+      get().removeTask(queuedEvent.id);
+    } else {
+      get().updateTask(queuedEvent.task);
+    }
+  },
+  receiveRemoteTask: (task) => {
+    if (!isSupportedStatus(task.status)) return;
+
+    if (pendingMutationCounts.has(task.id)) {
+      const queuedEvent = queuedRemoteEvents.get(task.id);
+      if (
+        queuedEvent?.type !== "upsert" ||
+        queuedEvent.task.version < task.version
+      ) {
+        queuedRemoteEvents.set(task.id, { type: "upsert", task });
+      }
+      return;
+    }
+
+    get().updateTask(task);
+  },
+  receiveRemoteDeletion: (taskId) => {
+    if (pendingMutationCounts.has(taskId)) {
+      queuedRemoteEvents.set(taskId, { type: "delete", id: taskId });
+      return;
+    }
+
+    get().removeTask(taskId);
   },
   moveTask: (taskId, targetStatus, targetIndex) => {
     const state = get();
@@ -156,11 +263,12 @@ export const useBoardStore = create<BoardState>((set, get) => ({
         buckets[status].sort((a, b) => a.position - b.position);
       }
 
-      set({ ...buckets, loading: false });
+      set({ ...buckets, loading: false, hasLoaded: true });
     } catch (error) {
       set({
         ...emptyBuckets(),
         loading: false,
+        hasLoaded: false,
         error: error instanceof Error ? error.message : "Failed to load board",
       });
     }
