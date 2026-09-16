@@ -16,17 +16,17 @@ function initials(name: string) {
 export function Assignee({ name }: AssigneeProps) {
   return (
     <div className="flex w-full items-center gap-1 rounded-lg border border-border bg-task p-2">
-      <div className="flex items-center divide-x divide-border rounded-lg border border-border bg-secondary text-sm">
-        <span className="flex items-center gap-2 px-3 py-1.5 text-foreground">
+      <div className="flex items-center divide-x divide-border rounded-lg border border-border bg-[#141414] text-sm">
+        <span className="flex items-center gap-2 px-3 py-1 text-foreground">
           <UserPlus className="size-4 text-muted-foreground" />
-          Assignee
+          <p className="text-[11px]">Assignee</p>
         </span>
         <span className="px-3 py-1.5 text-muted-foreground">is</span>
-        <span className="flex items-center gap-2 px-3 py-1.5 text-foreground">
-          <span className="flex size-5 items-center justify-center rounded-full bg-yellow-600 text-[10px] font-semibold text-white">
+        <span className="flex items-center gap-2 px-3 py-1 text-foreground">
+          <span className="flex size-4 items-center justify-center rounded-full bg-yellow-600 text-[7px] font-semibold text-white">
             {initials(name)}
           </span>
-          {name}
+          <p className="text-[11px]">{name}</p>
         </span>
         <button
           type="button"
