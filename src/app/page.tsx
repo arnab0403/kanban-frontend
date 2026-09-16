@@ -3,7 +3,7 @@ import { Sidebar } from "@/components/layout/sidebar";
 
 export default function Home() {
   return (
-    <div className="p-2 grid min-h-screen grid-cols-[240px_1fr] bg-background font-sans">
+    <div className="grid h-screen max-h-screen min-h-0 grid-cols-[240px_1fr] overflow-hidden bg-background p-2 font-sans">
       <Sidebar />
       <Board />
     </div>

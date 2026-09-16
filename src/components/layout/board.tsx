@@ -1,9 +1,10 @@
 "use client";
 
-import { useEffect } from "react";
-import type { TaskPriority, TaskStatus } from "@/lib/tasks";
+import { useCallback, useEffect, useState } from "react";
+import type { TaskStatus } from "@/lib/tasks";
 import { useBoardStore } from "@/store/board";
 import { Assignee } from "./assignee";
+import { BoardDndProvider } from "./board-dnd";
 import { Section } from "./section";
 
 const columns: { status: TaskStatus; title: string }[] = [
@@ -13,42 +14,19 @@ const columns: { status: TaskStatus; title: string }[] = [
   { status: "backlog", title: "Backlog" },
 ];
 
-const priorityColors: Record<TaskPriority, string> = {
-  low: "#38bdf8",
-  medium: "#f59e0b",
-  high: "#ef4444",
-};
-
-const assigneeColor = "#818cf8";
-
-function formatDate(iso: string) {
-  return new Intl.DateTimeFormat("en-US", {
-    month: "short",
-    day: "numeric",
-    year: "numeric",
-  }).format(new Date(iso));
-}
-
 function BoardColumn({ status, title }: { status: TaskStatus; title: string }) {
   const tasks = useBoardStore((state) => state[status]);
   const loading = useBoardStore((state) => state.loading);
 
   return (
-    <div className="w-96 shrink-0">
+    <div className="flex h-full min-h-0 w-96 shrink-0">
       <Section
+        status={status}
         title={title}
         completed={tasks.length}
         total={tasks.length}
         loading={loading}
-        tasks={tasks.map((task) => ({
-          id: `DEMO-${task.id}`,
-          title: task.title,
-          tags: [
-            { label: task.priority, color: priorityColors[task.priority] },
-            { label: task.assignee, color: assigneeColor },
-          ],
-          createdAt: formatDate(task.updatedAt),
-        }))}
+        tasks={tasks}
       />
     </div>
   );
@@ -56,21 +34,55 @@ function BoardColumn({ status, title }: { status: TaskStatus; title: string }) {
 
 export function Board() {
   const fetchBoard = useBoardStore((state) => state.fetchBoard);
+  const moveTask = useBoardStore((state) => state.moveTask);
+  const updateTask = useBoardStore((state) => state.updateTask);
   const error = useBoardStore((state) => state.error);
+  const [dragError, setDragError] = useState<string | null>(null);
 
   useEffect(() => {
     fetchBoard();
   }, [fetchBoard]);
 
+  const handleDrop = useCallback(async (taskId: string, status: TaskStatus, index: number) => {
+    setDragError(null);
+    const patches = moveTask(taskId, status, index);
+    if (patches.length === 0) return;
+
+    try {
+      const savedTasks = await Promise.all(
+        patches.map(async ({ id, changes }) => {
+          const response = await fetch(`${process.env.NEXT_PUBLIC_API_URL}/api/tasks/${id}`, {
+            method: "PATCH",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify(changes),
+          });
+
+          if (!response.ok) {
+            throw new Error(`Task update failed with ${response.status}`);
+          }
+
+          return response.json();
+        })
+      );
+
+      savedTasks.forEach(updateTask);
+    } catch (dropError) {
+      setDragError(dropError instanceof Error ? dropError.message : "Failed to move task");
+      await fetchBoard();
+    }
+  }, [fetchBoard, moveTask, updateTask]);
+
   return (
-    <main className="flex h-full flex-col gap-4 rounded-md bg-board p-6">
-      <Assignee name="Avinash Singh" />
-      {error && <p className="text-sm text-destructive">{error}</p>}
-      <div className="flex flex-1 gap-4 overflow-x-auto">
-        {columns.map((column) => (
-          <BoardColumn key={column.status} {...column} />
-        ))}
-      </div>
-    </main>
+    <BoardDndProvider onDrop={handleDrop}>
+      <main className="flex h-full min-h-0 flex-col gap-4 overflow-hidden rounded-md bg-board p-6">
+        <Assignee name="Avinash Singh" />
+        {(error || dragError) && <p className="text-sm text-destructive">{error ?? dragError}</p>}
+        <div className="flex min-h-0 flex-1 gap-4 overflow-x-auto overflow-y-hidden">
+          {columns.map((column) => (
+            <BoardColumn key={column.status} {...column} />
+          ))}
+        </div>
+      </main>
+    </BoardDndProvider>
   );
 }

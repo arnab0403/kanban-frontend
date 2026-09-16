@@ -1,29 +1,21 @@
 import { Loader, MoreHorizontal, Plus } from "lucide-react";
 import { ShimmerTask } from "./shimmer-task";
 import { Task } from "./task";
-
-interface Tag {
-  label: string;
-  color: string;
-}
-
-interface SectionTask {
-  id: string;
-  title: string;
-  tags: Tag[];
-  progress?: { completed: number; total: number };
-  createdAt: string;
-}
+import type { TaskRecord } from "@/lib/tasks";
+import type { TaskStatus } from "@/lib/tasks";
+import { TaskDropZone } from "./task-drop-zone";
 
 interface SectionProps {
+  status: TaskStatus;
   title: string;
   completed: number;
   total: number;
-  tasks: SectionTask[];
+  tasks: TaskRecord[];
   loading?: boolean;
 }
 
 export function Section({
+  status,
   title,
   completed,
   total,
@@ -31,8 +23,8 @@ export function Section({
   loading,
 }: SectionProps) {
   return (
-    <section className="flex h-full flex-col gap-4 rounded-xl bg-secondary px-2 py-4">
-      <header className="flex items-center justify-between">
+    <section className="flex h-full min-h-0 flex-1 flex-col gap-4 overflow-hidden rounded-xl bg-secondary px-2 py-4">
+      <header className="flex shrink-0 items-center justify-between">
         <div className="flex items-center gap-2">
           <Loader className="size-4 shrink-0 text-muted-foreground" />
           <h2 className="text-sm font-medium text-foreground">{title}</h2>
@@ -50,10 +42,20 @@ export function Section({
         </div>
       </header>
 
-      <div className="flex flex-col gap-3">
+      <div className="flex min-h-0 flex-1 flex-col overflow-y-auto [scrollbar-gutter:stable]">
         {loading
           ? Array.from({ length: 3 }, (_, index) => <ShimmerTask key={index} />)
-          : tasks.map((task) => <Task key={task.id} {...task} />)}
+          : tasks.length === 0
+            ? <TaskDropZone id={`${status}-empty`} status={status} index={0} empty />
+            : <>
+                <TaskDropZone id={`${status}-start`} status={status} index={0} />
+                {tasks.map((task, index) => (
+                  <div key={task.id} className="flex flex-col">
+                    <Task task={task} index={index} />
+                    <TaskDropZone id={`${status}-${task.id}-after`} status={status} index={index + 1} />
+                  </div>
+                ))}
+              </>}
       </div>
     </section>
   );

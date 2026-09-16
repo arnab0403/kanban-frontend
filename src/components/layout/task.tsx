@@ -1,54 +1,173 @@
-import { BarChart3, Circle, Loader } from "lucide-react";
+"use client";
 
-interface Tag {
-  label: string;
-  color: string;
-}
+import { useState, type FormEvent } from "react";
+import { Pencil, Loader } from "lucide-react";
+import type { TaskPriority, TaskRecord, TaskStatus } from "@/lib/tasks";
+import { useBoardStore } from "@/store/board";
+import { Button } from "@/components/ui/button";
+import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog";
+import { Input } from "@/components/ui/input";
+import { Label } from "@/components/ui/label";
+import { useTaskDraggable } from "@/hooks/use-task-draggable";
 
-interface TaskProps {
-  id: string;
-  title: string;
-  tags: Tag[];
-  progress?: { completed: number; total: number };
-  createdAt: string;
-}
+const priorities: TaskPriority[] = ["low", "medium", "high"];
+const statuses: TaskStatus[] = ["todo", "in-progress", "done", "backlog"];
+const editableFields = [
+  "title",
+  "description",
+  "priority",
+  "assignee",
+  "status",
+  "position",
+] as const;
 
-export function Task({ id, title, tags, progress, createdAt }: TaskProps) {
+export function Task({ task, index }: { task: TaskRecord; index: number }) {
+  const draggableRef = useTaskDraggable(task.id, task.status, index);
+  const [open, setOpen] = useState(false);
+  const [draft, setDraft] = useState(task);
+  const [saving, setSaving] = useState(false);
+  const [saveError, setSaveError] = useState<string | null>(null);
+  const updateTask = useBoardStore((state) => state.updateTask);
+
+  function openEditor() {
+    setDraft(task);
+    setSaveError(null);
+    setOpen(true);
+  }
+
+  function updateField<Key extends keyof TaskRecord>(key: Key, value: TaskRecord[Key]) {
+    setDraft((current) => ({ ...current, [key]: value }));
+  }
+
+  async function handleSubmit(event: FormEvent<HTMLFormElement>) {
+    event.preventDefault();
+    setSaving(true);
+    setSaveError(null);
+
+    const changes = Object.fromEntries(
+      editableFields
+        .filter((field) => draft[field] !== task[field])
+        .map((field) => [field, draft[field]])
+    );
+
+    if (Object.keys(changes).length === 0) {
+      setOpen(false);
+      setSaving(false);
+      return;
+    }
+
+    try {
+      const response = await fetch(`${process.env.NEXT_PUBLIC_API_URL}/api/tasks/${task.id}`, {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(changes),
+      });
+
+      if (!response.ok) {
+        throw new Error(`Task update failed with ${response.status}`);
+      }
+
+      const responseText = await response.text();
+      const savedTask = responseText ? (JSON.parse(responseText) as Partial<TaskRecord>) : {};
+      updateTask({
+        ...task,
+        ...draft,
+        ...savedTask,
+        id: task.id,
+        updatedAt: savedTask.updatedAt ?? new Date().toISOString(),
+      });
+      setOpen(false);
+    } catch (error) {
+      setSaveError(error instanceof Error ? error.message : "Failed to update task");
+    } finally {
+      setSaving(false);
+    }
+  }
+
   return (
-    <div className="flex flex-col gap-3 rounded-xl bg-task p-4">
-      <div className="flex flex-col gap-1">
-        <span className="text-xs text-muted-foreground">{id}</span>
-        <div className="flex items-center gap-2">
-          <Loader className="size-4 shrink-0 text-muted-foreground" />
-          <p className="text-sm font-medium text-foreground">{title}</p>
+    <>
+      <div ref={draggableRef} className="touch-none cursor-grab active:cursor-grabbing">
+        <div data-task-card className="flex flex-col gap-3 rounded-xl bg-task p-4 transition-[transform,box-shadow] duration-150">
+        <div className="flex items-start justify-between gap-3">
+          <div className="flex flex-col gap-1">
+            <span className="text-xs text-muted-foreground">DEMO-{task.id}</span>
+            <div className="flex items-center gap-2">
+              <Loader className="size-4 shrink-0 text-muted-foreground" />
+              <p className="text-sm font-medium text-foreground">{task.title}</p>
+            </div>
+          </div>
+          <Button type="button" variant="ghost" size="icon-sm" aria-label={`Edit ${task.title}`} onClick={openEditor}>
+            <Pencil />
+          </Button>
+        </div>
+
+        <div className="flex flex-wrap items-center gap-2">
+          <span className="rounded-full bg-background px-2.5 py-1 text-xs text-foreground">{task.priority}</span>
+          <span className="rounded-full bg-background px-2.5 py-1 text-xs text-foreground">{task.assignee}</span>
+          <span className="rounded-full bg-background px-2.5 py-1 text-xs text-foreground">{task.status}</span>
+        </div>
+
+        <span className="text-xs text-muted-foreground">
+          Updated {new Date(task.updatedAt).toLocaleDateString("en-US", { month: "short", day: "numeric", year: "numeric" })}
+        </span>
         </div>
       </div>
 
-      <div className="flex flex-wrap items-center gap-2">
-        <span className="flex size-7 items-center justify-center rounded-md bg-background text-muted-foreground">
-          <BarChart3 className="size-3.5" />
-        </span>
-        {tags.map((tag) => (
-          <span
-            key={tag.label}
-            className="flex items-center gap-1.5 rounded-full bg-background px-2.5 py-1 text-xs text-foreground"
-          >
-            <span
-              className="size-2 shrink-0 rounded-full"
-              style={{ backgroundColor: tag.color }}
-            />
-            {tag.label}
-          </span>
-        ))}
-        {progress && (
-          <span className="flex items-center gap-1.5 rounded-full bg-background px-2.5 py-1 text-xs text-foreground">
-            <Circle className="size-3 shrink-0 text-indigo-400" />
-            {progress.completed}/{progress.total}
-          </span>
-        )}
-      </div>
-
-      <span className="text-xs text-muted-foreground">Created {createdAt}</span>
-    </div>
+      <Dialog open={open} onOpenChange={setOpen}>
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle>Edit task</DialogTitle>
+            <DialogDescription>Update the details for {task.id}.</DialogDescription>
+          </DialogHeader>
+          <form className="grid gap-4" onSubmit={handleSubmit}>
+            <div className="grid gap-2">
+              <Label htmlFor={`task-id-${task.id}`}>ID</Label>
+              <Input id={`task-id-${task.id}`} value={draft.id} readOnly />
+            </div>
+            <div className="grid gap-2">
+              <Label htmlFor={`task-title-${task.id}`}>Title</Label>
+              <Input id={`task-title-${task.id}`} value={draft.title} onChange={(event) => updateField("title", event.target.value)} required />
+            </div>
+            <div className="grid gap-2">
+              <Label htmlFor={`task-description-${task.id}`}>Description</Label>
+              <textarea id={`task-description-${task.id}`} className="min-h-24 w-full rounded-lg border border-input bg-transparent px-2.5 py-2 text-sm outline-none focus-visible:border-ring focus-visible:ring-3 focus-visible:ring-ring/50" value={draft.description} onChange={(event) => updateField("description", event.target.value)} />
+            </div>
+            <div className="grid gap-4 sm:grid-cols-2">
+              <div className="grid gap-2">
+                <Label htmlFor={`task-priority-${task.id}`}>Priority</Label>
+                <select id={`task-priority-${task.id}`} className="h-8 rounded-lg border border-input bg-background px-2.5 text-sm" value={draft.priority} onChange={(event) => updateField("priority", event.target.value as TaskPriority)}>
+                  {priorities.map((priority) => <option key={priority} value={priority}>{priority}</option>)}
+                </select>
+              </div>
+              <div className="grid gap-2">
+                <Label htmlFor={`task-assignee-${task.id}`}>Assignee</Label>
+                <Input id={`task-assignee-${task.id}`} value={draft.assignee} onChange={(event) => updateField("assignee", event.target.value)} />
+              </div>
+            </div>
+            <div className="grid gap-4 sm:grid-cols-2">
+              <div className="grid gap-2">
+                <Label htmlFor={`task-status-${task.id}`}>Status</Label>
+                <select id={`task-status-${task.id}`} className="h-8 rounded-lg border border-input bg-background px-2.5 text-sm" value={draft.status} onChange={(event) => updateField("status", event.target.value as TaskStatus)}>
+                  {statuses.map((status) => <option key={status} value={status}>{status}</option>)}
+                </select>
+              </div>
+              <div className="grid gap-2">
+                <Label htmlFor={`task-position-${task.id}`}>Position</Label>
+                <Input id={`task-position-${task.id}`} type="number" value={draft.position} onChange={(event) => updateField("position", Number(event.target.value))} />
+              </div>
+            </div>
+            <div className="grid gap-2">
+              <Label htmlFor={`task-updated-${task.id}`}>Updated at</Label>
+              <Input id={`task-updated-${task.id}`} value={draft.updatedAt} readOnly />
+            </div>
+            {saveError && <p className="text-sm text-destructive">{saveError}</p>}
+            <DialogFooter>
+              <Button type="button" variant="outline" onClick={() => setOpen(false)} disabled={saving}>Cancel</Button>
+              <Button type="submit" disabled={saving}>{saving ? "Saving..." : "Save changes"}</Button>
+            </DialogFooter>
+          </form>
+        </DialogContent>
+      </Dialog>
+    </>
   );
 }

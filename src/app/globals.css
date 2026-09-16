@@ -2,6 +2,36 @@
 @import "tw-animate-css";
 @import "shadcn/tailwind.css";
 
+* {
+  scrollbar-color: #525252 transparent;
+  scrollbar-width: thin;
+}
+
+*::-webkit-scrollbar {
+  width: 8px;
+  height: 8px;
+}
+
+*::-webkit-scrollbar-track {
+  background: transparent;
+}
+
+*::-webkit-scrollbar-thumb {
+  background-color: #525252;
+  border: 2px solid transparent;
+  border-radius: 9999px;
+  background-clip: content-box;
+}
+
+*::-webkit-scrollbar-thumb:hover {
+  background-color: #737373;
+}
+
+[data-dnd-dragging] [data-task-card] {
+  transform: rotate(2deg);
+  box-shadow: 0 18px 45px rgb(0 0 0 / 35%);
+}
+
 @custom-variant dark (&:is(.dark *));
 
 @theme inline {
