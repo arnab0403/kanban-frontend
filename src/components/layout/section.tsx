@@ -1,4 +1,5 @@
 import { Loader, MoreHorizontal, Plus } from "lucide-react";
+import { ShimmerTask } from "./shimmer-task";
 import { Task } from "./task";
 
 interface Tag {
@@ -19,9 +20,16 @@ interface SectionProps {
   completed: number;
   total: number;
   tasks: SectionTask[];
+  loading?: boolean;
 }
 
-export function Section({ title, completed, total, tasks }: SectionProps) {
+export function Section({
+  title,
+  completed,
+  total,
+  tasks,
+  loading,
+}: SectionProps) {
   return (
     <section className="flex h-full flex-col gap-4 rounded-xl bg-secondary px-2 py-4">
       <header className="flex items-center justify-between">
@@ -43,9 +51,9 @@ export function Section({ title, completed, total, tasks }: SectionProps) {
       </header>
 
       <div className="flex flex-col gap-3">
-        {tasks.map((task) => (
-          <Task key={task.id} {...task} />
-        ))}
+        {loading
+          ? Array.from({ length: 3 }, (_, index) => <ShimmerTask key={index} />)
+          : tasks.map((task) => <Task key={task.id} {...task} />)}
       </div>
     </section>
   );
