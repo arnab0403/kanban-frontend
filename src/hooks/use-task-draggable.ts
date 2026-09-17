@@ -12,7 +12,8 @@ import {
 export function useTaskDraggable(
   taskId: string,
   status: TaskStatus,
-  index: number
+  index: number,
+  title: string,
 ) {
   const elementRef = useRef<HTMLDivElement>(null);
   const { manager } = useBoardDnd();
@@ -35,5 +36,16 @@ export function useTaskDraggable(
     return () => draggable.destroy();
   }, [index, manager, status, taskId]);
 
-  return elementRef;
+  // Explicit props make the runtime dnd-kit behavior visible in the source and
+  // give keyboard users a meaningful task label and shortcut information.
+  return {
+    draggableRef: elementRef,
+    draggableProps: {
+      tabIndex: 0,
+      role: "button" as const,
+      "aria-label": `Move task ${title}`,
+      "aria-keyshortcuts":
+        "Space Enter ArrowUp ArrowDown ArrowLeft ArrowRight Escape",
+    },
+  };
 }

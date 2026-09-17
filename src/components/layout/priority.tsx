@@ -29,12 +29,12 @@ export function Priority({
   }
 
   return (
-    <div className="flex max-w-full items-center divide-x divide-border overflow-hidden rounded-lg border border-border bg-[#141414] text-sm">
+    <div className="flex h-8 max-w-full items-center divide-x divide-border overflow-hidden rounded-lg border border-border bg-[#141414] text-sm">
       <Popover open={open} onOpenChange={setOpen}>
         <PopoverTrigger asChild>
           <button
             type="button"
-            className="flex cursor-pointer items-center gap-2 px-3 py-1 text-foreground transition-colors hover:bg-secondary"
+            className="flex h-full cursor-pointer items-center gap-2 px-3 text-foreground transition-colors hover:bg-secondary"
           >
             <ListFilter className="size-4 text-muted-foreground" />
             <span className="text-[11px]">Priority</span>
@@ -63,14 +63,16 @@ export function Priority({
 
       {selectedPriority && (
         <>
-          <span className="px-3 py-1.5 text-muted-foreground">is</span>
-          <span className="px-3 py-1 text-[11px] capitalize text-foreground">
+          <span className="flex h-full items-center px-3 text-muted-foreground">
+            is
+          </span>
+          <span className="flex h-full items-center px-3 text-[11px] capitalize text-foreground">
             {selectedPriority}
           </span>
           <button
             type="button"
             aria-label="Clear priority"
-            className="cursor-pointer px-3 py-1.5 text-muted-foreground hover:text-foreground"
+            className="h-full cursor-pointer px-3 text-muted-foreground hover:text-foreground"
             onClick={() => onSelectedPriorityChange(null)}
           >
             <X className="size-4" />

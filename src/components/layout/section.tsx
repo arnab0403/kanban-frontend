@@ -1,4 +1,4 @@
-import { Loader, MoreHorizontal } from "lucide-react";
+import { CircleCheck, Loader, MoreHorizontal } from "lucide-react";
 import { ShimmerTask } from "./shimmer-task";
 import { Task } from "./task";
 import type { TaskRecord } from "@/lib/tasks";
@@ -16,6 +16,13 @@ interface SectionProps {
   loading?: boolean;
 }
 
+const statusIconStyles: Record<TaskStatus, string> = {
+  todo: "text-white",
+  "in-progress": "text-green-500",
+  done: "text-white",
+  backlog: "text-red-500",
+};
+
 /** Renders one status column, including loading, empty, and populated states. */
 export function Section({
   status,
@@ -26,11 +33,15 @@ export function Section({
   nextPosition,
   loading,
 }: SectionProps) {
+  const StatusIcon = status === "done" ? CircleCheck : Loader;
+
   return (
     <section className="flex h-full min-h-0 min-w-0 flex-1 flex-col gap-3 overflow-hidden rounded-xl bg-secondary px-2 py-3 sm:gap-4 sm:py-4">
       <header className="flex shrink-0 items-center justify-between">
         <div className="flex items-center gap-2">
-          <Loader className="size-4 shrink-0 text-muted-foreground" />
+          <StatusIcon
+            className={`size-4 shrink-0 ${statusIconStyles[status]}`}
+          />
           <h2 className="text-sm font-medium text-foreground">{title}</h2>
           <span className="text-sm text-muted-foreground">
             {completed} / {total}

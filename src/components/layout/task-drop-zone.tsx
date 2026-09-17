@@ -30,6 +30,7 @@ export function TaskDropZone({ id, status, index, empty }: TaskDropZoneProps) {
     dragging &&
     activeSource?.status === status &&
     index === activeSource.index + 1;
+  const isActive = dragging && active && !duplicateSourceSlot;
 
   useEffect(() => {
     if (!manager || !elementRef.current || duplicateSourceSlot) return;
@@ -48,6 +49,10 @@ export function TaskDropZone({ id, status, index, empty }: TaskDropZoneProps) {
       "dragover",
       ({ operation }) => setActive(operation.target?.id === droppable.id)
     );
+    const removeStartListener = manager.monitor.addEventListener(
+      "dragstart",
+      () => setActive(false),
+    );
     const removeEndListener = manager.monitor.addEventListener("dragend", () => {
       setActive(false);
     });
@@ -55,6 +60,7 @@ export function TaskDropZone({ id, status, index, empty }: TaskDropZoneProps) {
     return () => {
       // A slot may be recreated as filtering or task positions change.
       removeOverListener();
+      removeStartListener();
       removeEndListener();
       droppable.destroy();
     };
@@ -69,10 +75,14 @@ export function TaskDropZone({ id, status, index, empty }: TaskDropZoneProps) {
         duplicateSourceSlot && "hidden",
         dragging && "h-4 border-dashed border-border bg-background/30",
         empty && "min-h-16 flex-1",
-        active && "h-14 border-ring bg-muted/70 text-foreground"
+        isActive && "h-14 border-ring bg-muted/70 text-foreground"
       )}
     >
-      {active || (empty && dragging) ? "Drop task here" : empty ? "No tasks" : null}
+      {isActive || (empty && dragging)
+        ? "Drop task here"
+        : empty
+          ? "No tasks"
+          : null}
     </div>
   );
 }

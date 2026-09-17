@@ -97,7 +97,12 @@ function showDeletedTaskToast(task: TaskRecord) {
 
 export function Task({ task, index }: { task: TaskRecord; index: number }) {
   // The hook binds dnd-kit to the outer card element through this ref.
-  const draggableRef = useTaskDraggable(task.id, task.status, index);
+  const { draggableRef, draggableProps } = useTaskDraggable(
+    task.id,
+    task.status,
+    index,
+    task.title,
+  );
   const displayTitle =
     task.title.length > 25 ? `${task.title.slice(0, 25)}...` : task.title;
   const [open, setOpen] = useState(false);
@@ -235,7 +240,8 @@ export function Task({ task, index }: { task: TaskRecord; index: number }) {
     <>
       <div
         ref={draggableRef}
-        className="touch-manipulation cursor-grab active:cursor-grabbing"
+        {...draggableProps}
+        className="touch-manipulation cursor-grab rounded-xl focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 focus-visible:ring-offset-secondary active:cursor-grabbing"
       >
         <div data-task-card className="group/task flex flex-col gap-3 rounded-xl bg-task p-3 transition-[transform,box-shadow] duration-150 sm:p-4">
         <div className="flex items-start justify-between gap-3">

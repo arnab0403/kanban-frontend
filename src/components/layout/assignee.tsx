@@ -66,12 +66,12 @@ export function Assignee({
   }
 
   return (
-    <div className="flex max-w-full items-center divide-x divide-border overflow-hidden rounded-lg border border-border bg-[#141414] text-sm">
+    <div className="flex h-8 max-w-full items-center divide-x divide-border overflow-hidden rounded-lg border border-border bg-[#141414] text-sm">
       <Popover open={open} onOpenChange={handleOpenChange}>
         <PopoverTrigger asChild>
           <button
             type="button"
-            className="flex shrink-0 cursor-pointer items-center gap-2 px-3 py-1 text-foreground transition-colors hover:bg-secondary"
+            className="flex h-full shrink-0 cursor-pointer items-center gap-2 px-3 text-foreground transition-colors hover:bg-secondary"
           >
             <UserPlus className="size-4 text-muted-foreground" />
             <span className="text-[11px]">Assignee</span>
@@ -132,8 +132,10 @@ export function Assignee({
 
       {selectedUser && (
         <>
-          <span className="px-3 py-1.5 text-muted-foreground">is</span>
-          <span className="flex min-w-0 items-center gap-2 px-3 py-1 text-foreground">
+          <span className="flex h-full items-center px-3 text-muted-foreground">
+            is
+          </span>
+          <span className="flex h-full min-w-0 items-center gap-2 px-3 text-foreground">
             <span className="flex size-4 items-center justify-center rounded-full bg-yellow-600 text-[7px] font-semibold text-white">
               {initials(selectedUser)}
             </span>
@@ -144,7 +146,7 @@ export function Assignee({
           <button
             type="button"
             aria-label="Clear assignee"
-            className="shrink-0 cursor-pointer px-3 py-1.5 text-muted-foreground hover:text-foreground"
+            className="h-full shrink-0 cursor-pointer px-3 text-muted-foreground hover:text-foreground"
             onClick={() => onSelectedUserChange(null)}
           >
             <X className="size-4" />

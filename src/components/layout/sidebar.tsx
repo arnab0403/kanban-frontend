@@ -58,8 +58,13 @@ export function Sidebar() {
   return (
     <aside
       aria-label="Sidebar"
-      className="hidden h-full flex-col overflow-y-auto bg-background px-3 py-3 md:flex"
+      className="group/sidebar relative hidden h-full cursor-not-allowed flex-col overflow-y-auto bg-background px-3 py-3 md:flex"
     >
+      <div className="pointer-events-none absolute inset-x-3 top-1/2 z-20 -translate-y-1/2 rounded-lg border border-yellow-500/30 bg-yellow-500/10 px-3 py-4 text-center text-xs leading-relaxed text-yellow-200 opacity-0 shadow-lg backdrop-blur-sm transition-opacity duration-200 group-hover/sidebar:opacity-100">
+        🚧 This sidebar is still practicing how to be a sidebar. Please stop
+        hovering before it gets nervous. 😄
+      </div>
+
       <div className="flex items-center gap-1.5 px-1 pb-3">
         <span className="flex size-6 shrink-0 items-center justify-center rounded-md bg-sky-500 text-[10px] font-semibold text-white">
           HT
