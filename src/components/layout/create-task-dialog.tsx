@@ -42,6 +42,8 @@ export function CreateTaskDialog({ status, position }: CreateTaskDialogProps) {
 
   function handleOpenChange(nextOpen: boolean) {
     setOpen(nextOpen);
+
+    // Every new opening starts with a clean form and clears the last failure.
     if (nextOpen) {
       setForm(emptyForm());
       setError(null);
@@ -65,6 +67,8 @@ export function CreateTaskDialog({ status, position }: CreateTaskDialogProps) {
       }
 
       const task = (await response.json()) as TaskRecord;
+
+      // The server response contains the authoritative id, version, and date.
       updateTask(task);
       setOpen(false);
     } catch (submitError) {

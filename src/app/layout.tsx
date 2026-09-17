@@ -26,6 +26,7 @@ export default function RootLayout({ children }: LayoutProps<"/">) {
     >
       <body className="min-h-full flex flex-col">
         {children}
+        {/* One global toaster handles feedback from task mutations. */}
         <Toaster position="bottom-right" />
       </body>
     </html>

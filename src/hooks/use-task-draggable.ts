@@ -8,6 +8,7 @@ import {
   type TaskDragData,
 } from "@/components/layout/board-dnd";
 
+/** Registers a task card with the board's shared drag-and-drop manager. */
 export function useTaskDraggable(
   taskId: string,
   status: TaskStatus,
@@ -19,6 +20,8 @@ export function useTaskDraggable(
   useEffect(() => {
     if (!manager || !elementRef.current) return;
 
+    // Status and index travel with the dragged element so the provider can
+    // resolve its source and final destination when dragging ends.
     const draggable = new Draggable<TaskDragData>(
       {
         id: `task-${taskId}`,
@@ -28,6 +31,7 @@ export function useTaskDraggable(
       manager
     );
 
+    // Re-register when the task moves and destroy the old DOM binding.
     return () => draggable.destroy();
   }, [index, manager, status, taskId]);
 

@@ -8,9 +8,10 @@ interface SearchProps {
   onValueChange: (value: string) => void;
 }
 
+/** Controlled title search; Board owns normalization and filtering. */
 export function Search({ value, onValueChange }: SearchProps) {
   return (
-    <div className="relative ml-auto w-72 shrink-0">
+    <div className="relative order-first w-full sm:order-none sm:ml-auto sm:w-72 sm:shrink-0">
       <SearchIcon className="pointer-events-none absolute top-1/2 left-2.5 size-4 -translate-y-1/2 text-muted-foreground" />
       <Input
         type="search"

@@ -20,6 +20,7 @@ import {
 
 type IconType = ComponentType<{ className?: string }>;
 
+// Shared static navigation row used by each visual sidebar group.
 function NavItem({
   icon: Icon,
   label,
@@ -57,7 +58,7 @@ export function Sidebar() {
   return (
     <aside
       aria-label="Sidebar"
-      className="flex h-full flex-col overflow-y-auto bg-background px-3 py-3"
+      className="hidden h-full flex-col overflow-y-auto bg-background px-3 py-3 md:flex"
     >
       <div className="flex items-center gap-1.5 px-1 pb-3">
         <span className="flex size-6 shrink-0 items-center justify-center rounded-md bg-sky-500 text-[10px] font-semibold text-white">

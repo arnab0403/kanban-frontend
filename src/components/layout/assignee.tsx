@@ -30,6 +30,8 @@ export function Assignee({
   const [users, setUsers] = useState<string[] | null>(null);
   const [error, setError] = useState<string | null>(null);
 
+  // Users are fetched lazily because the list is unnecessary until the
+  // assignee popover is opened.
   async function loadUsers() {
     setError(null);
 
@@ -51,6 +53,8 @@ export function Assignee({
   function handleOpenChange(nextOpen: boolean) {
     setOpen(nextOpen);
 
+    // Cache a successful result for later openings; failed requests can be
+    // retried explicitly from the error state.
     if (nextOpen && users === null && error === null) {
       void loadUsers();
     }
@@ -62,12 +66,12 @@ export function Assignee({
   }
 
   return (
-    <div className="flex items-center divide-x divide-border overflow-hidden rounded-lg border border-border bg-[#141414] text-sm">
+    <div className="flex max-w-full items-center divide-x divide-border overflow-hidden rounded-lg border border-border bg-[#141414] text-sm">
       <Popover open={open} onOpenChange={handleOpenChange}>
         <PopoverTrigger asChild>
           <button
             type="button"
-            className="flex cursor-pointer items-center gap-2 px-3 py-1 text-foreground transition-colors hover:bg-secondary"
+            className="flex shrink-0 cursor-pointer items-center gap-2 px-3 py-1 text-foreground transition-colors hover:bg-secondary"
           >
             <UserPlus className="size-4 text-muted-foreground" />
             <span className="text-[11px]">Assignee</span>
@@ -129,16 +133,18 @@ export function Assignee({
       {selectedUser && (
         <>
           <span className="px-3 py-1.5 text-muted-foreground">is</span>
-          <span className="flex items-center gap-2 px-3 py-1 text-foreground">
+          <span className="flex min-w-0 items-center gap-2 px-3 py-1 text-foreground">
             <span className="flex size-4 items-center justify-center rounded-full bg-yellow-600 text-[7px] font-semibold text-white">
               {initials(selectedUser)}
             </span>
-            <span className="text-[11px]">{selectedUser}</span>
+            <span className="max-w-24 truncate text-[11px] sm:max-w-40">
+              {selectedUser}
+            </span>
           </span>
           <button
             type="button"
             aria-label="Clear assignee"
-            className="cursor-pointer px-3 py-1.5 text-muted-foreground hover:text-foreground"
+            className="shrink-0 cursor-pointer px-3 py-1.5 text-muted-foreground hover:text-foreground"
             onClick={() => onSelectedUserChange(null)}
           >
             <X className="size-4" />

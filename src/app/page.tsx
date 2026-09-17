@@ -1,31 +1,20 @@
 import { Board } from "@/components/layout/board";
 import { Sidebar } from "@/components/layout/sidebar";
-import type { TaskPriority } from "@/lib/tasks";
-
-type SearchParams = Promise<Record<string, string | string[] | undefined>>;
-
-function firstValue(value: string | string[] | undefined) {
-  return Array.isArray(value) ? value[0] : value;
-}
-
-function parsePriority(value: string | undefined): TaskPriority | null {
-  return value === "low" || value === "medium" || value === "high"
-    ? value
-    : null;
-}
+import { firstValue, parsePriority, type SearchParams } from "@/lib/utils";
 
 export default async function Home({
   searchParams,
 }: {
   searchParams: SearchParams;
 }) {
+  // Read filters on the server so a refresh or shared URL restores the same view.
   const query = await searchParams;
   const initialSearch = firstValue(query.search) ?? "";
   const initialAssignee = firstValue(query.assignee)?.trim() || null;
   const initialPriority = parsePriority(firstValue(query.priority));
 
   return (
-    <div className="grid h-screen max-h-screen min-h-0 grid-cols-[240px_1fr] overflow-hidden bg-background p-2 font-sans">
+    <div className="grid h-dvh max-h-dvh min-h-0 grid-cols-1 overflow-hidden bg-background p-2 font-sans md:grid-cols-[240px_minmax(0,1fr)]">
       <Sidebar />
       <Board
         initialSearch={initialSearch}

@@ -20,6 +20,7 @@ export function Priority({
   selectedPriority,
   onSelectedPriorityChange,
 }: PriorityProps) {
+  // Popover visibility is local; the selected filter is controlled by Board.
   const [open, setOpen] = useState(false);
 
   function selectPriority(priority: TaskPriority) {
@@ -28,7 +29,7 @@ export function Priority({
   }
 
   return (
-    <div className="flex items-center divide-x divide-border overflow-hidden rounded-lg border border-border bg-[#141414] text-sm">
+    <div className="flex max-w-full items-center divide-x divide-border overflow-hidden rounded-lg border border-border bg-[#141414] text-sm">
       <Popover open={open} onOpenChange={setOpen}>
         <PopoverTrigger asChild>
           <button

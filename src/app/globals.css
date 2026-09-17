@@ -2,6 +2,7 @@
 @import "tw-animate-css";
 @import "shadcn/tailwind.css";
 
+/* Keep scrollbars compact and consistent across board columns. */
 * {
   scrollbar-color: #525252 transparent;
   scrollbar-width: thin;
@@ -28,12 +29,14 @@
 }
 
 [data-dnd-dragging] [data-task-card] {
+  /* Give the drag overlay visual separation from the stationary cards. */
   transform: rotate(2deg);
   box-shadow: 0 18px 45px rgb(0 0 0 / 35%);
 }
 
 @custom-variant dark (&:is(.dark *));
 
+/* Expose application tokens as Tailwind utilities. */
 @theme inline {
   --color-background: var(--background);
   --color-foreground: var(--foreground);
@@ -81,6 +84,7 @@
 }
 
 :root {
+  /* The application uses this dark palette as its default theme. */
   --background: #09090a;
   --foreground: oklch(0.985 0 0);
   --card: oklch(0.205 0 0);

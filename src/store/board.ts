@@ -39,6 +39,8 @@ interface BoardState extends Buckets {
 
   fetchBoard: () => Promise<void>;
   updateTask: (task: TaskRecord) => void;
+  applyOptimisticTask: (task: TaskRecord) => void;
+  rollbackTask: (task: TaskRecord) => void;
   removeTask: (taskId: string) => void;
 
   beginTaskMutation: (taskId: string) => void;
@@ -76,6 +78,36 @@ function positionTasks(tasks: TaskRecord[], status: TaskStatus) {
   });
 }
 
+function replaceTaskInBuckets(state: Buckets, task: TaskRecord): Partial<Buckets> {
+  const location = findTaskLocation(state, task.id);
+
+  if (!location) {
+    const targetTasks = [...state[task.status], task].sort(
+      (a, b) => a.position - b.position,
+    );
+    return { [task.status]: targetTasks } as Partial<Buckets>;
+  }
+
+  if (location.status === task.status) {
+    const nextTasks = [...state[location.status]];
+    nextTasks[location.index] = task;
+    nextTasks.sort((a, b) => a.position - b.position);
+    return { [location.status]: nextTasks } as Partial<Buckets>;
+  }
+
+  const sourceTasks = state[location.status].filter(
+    (currentTask) => currentTask.id !== task.id,
+  );
+  const targetTasks = [...state[task.status], task].sort(
+    (a, b) => a.position - b.position,
+  );
+
+  return {
+    [location.status]: sourceTasks,
+    [task.status]: targetTasks,
+  } as Partial<Buckets>;
+}
+
 function beginMutation(taskId: string) {
   pendingMutationCounts.set(taskId, (pendingMutationCounts.get(taskId) ?? 0) + 1);
 }
@@ -106,36 +138,16 @@ export const useBoardStore = create<BoardState>((set, get) => ({
       // that has already been applied.
       const location = findTaskLocation(state, task.id);
       if (location && location.task.version >= task.version) return state;
-
-      // A newly created task only changes its destination bucket.
-      if (!location) {
-        const targetTasks = [...state[task.status], task].sort(
-          (a, b) => a.position - b.position,
-        );
-        return { [task.status]: targetTasks } as Partial<BoardState>;
-      }
-
-      // An edit that keeps the same status replaces only that column's array.
-      if (location.status === task.status) {
-        const nextTasks = [...state[location.status]];
-        nextTasks[location.index] = task;
-        nextTasks.sort((a, b) => a.position - b.position);
-        return { [location.status]: nextTasks } as Partial<BoardState>;
-      }
-
-      // A status change replaces only the source and destination arrays.
-      const sourceTasks = state[location.status].filter(
-        (currentTask) => currentTask.id !== task.id,
-      );
-      const targetTasks = [...state[task.status], task].sort(
-        (a, b) => a.position - b.position,
-      );
-
-      return {
-        [location.status]: sourceTasks,
-        [task.status]: targetTasks,
-      } as Partial<BoardState>;
+      return replaceTaskInBuckets(state, task);
     });
+  },
+  applyOptimisticTask: (task) => {
+    if (!isSupportedStatus(task.status)) return;
+    set((state) => replaceTaskInBuckets(state, task));
+  },
+  rollbackTask: (task) => {
+    if (!isSupportedStatus(task.status)) return;
+    set((state) => replaceTaskInBuckets(state, task));
   },
   removeTask: (taskId) => {
     set((state) => {

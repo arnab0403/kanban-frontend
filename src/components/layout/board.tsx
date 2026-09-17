@@ -1,11 +1,16 @@
 "use client";
 
-import { memo, useCallback, useEffect, useMemo, useState } from "react";
-import type { TaskPriority, TaskRecord, TaskStatus } from "@/lib/tasks";
+import { useCallback, useEffect, useState } from "react";
+import {
+  matchesTaskFilters,
+  type TaskPriority,
+  type TaskStatus,
+} from "@/lib/tasks";
 import { useBoardEvents } from "@/hooks/use-board-events";
 import { useBoardStore } from "@/store/board";
+import { BoardColumn } from "./board-column";
 import { BoardDndProvider } from "./board-dnd";
-import { Section } from "./section";
+import { ServerFailure } from "./server-failure";
 import { TopBar } from "./top-bar";
 
 const columns: { status: TaskStatus; title: string }[] = [
@@ -40,65 +45,13 @@ function replaceFilterParameter(name: FilterParameter, value: string | null) {
   );
 }
 
-function matchesFilters(
-  task: TaskRecord,
-  selectedAssignee: string | null,
-  selectedPriority: TaskPriority | null,
-  searchQuery: string,
-) {
-  const matchesAssignee =
-    selectedAssignee === null || task.assignee === selectedAssignee;
-  const matchesPriority =
-    selectedPriority === null || task.priority === selectedPriority;
-  const matchesSearch =
-    searchQuery.length === 0 || task.title.toLowerCase().includes(searchQuery);
-
-  return matchesAssignee && matchesPriority && matchesSearch;
-}
-
-const BoardColumn = memo(function BoardColumn({
-  status,
-  title,
-  selectedAssignee,
-  selectedPriority,
-  searchQuery,
-}: {
-  status: TaskStatus;
-  title: string;
-  selectedAssignee: string | null;
-  selectedPriority: TaskPriority | null;
-  searchQuery: string;
-}) {
-  const tasks = useBoardStore((state) => state[status]);
-  const loading = useBoardStore((state) => state.loading);
-  const visibleTasks = useMemo(
-    () =>
-      tasks.filter((task) =>
-        matchesFilters(task, selectedAssignee, selectedPriority, searchQuery),
-      ),
-    [searchQuery, selectedAssignee, selectedPriority, tasks],
-  );
-  console.log("Board name is:", title); // Using this you can check the unncesary re-rendering of the BoardColumn component
-  return (
-    <div className="flex h-full min-h-0 w-96 shrink-0">
-      <Section
-        status={status}
-        title={title}
-        completed={visibleTasks.length}
-        total={visibleTasks.length}
-        loading={loading}
-        tasks={visibleTasks}
-        nextPosition={Math.max(0, ...tasks.map((task) => task.position)) + 1}
-      />
-    </div>
-  );
-});
-
 export function Board({
   initialSearch,
   initialAssignee,
   initialPriority,
 }: BoardProps) {
+  // Select each store value separately so Board rerenders only when one of
+  // these specific values changes, rather than on every Zustand update.
   const fetchBoard = useBoardStore((state) => state.fetchBoard);
   const moveTask = useBoardStore((state) => state.moveTask);
   const beginTaskMutation = useBoardStore((state) => state.beginTaskMutation);
@@ -109,6 +62,8 @@ export function Board({
   const hasLoaded = useBoardStore((state) => state.hasLoaded);
   const error = useBoardStore((state) => state.error);
   const [dragError, setDragError] = useState<string | null>(null);
+
+  // The filter state starts from the server-read URL query parameters.
   const [selectedAssignee, setSelectedAssignee] = useState<string | null>(
     initialAssignee,
   );
@@ -118,17 +73,21 @@ export function Board({
   const [search, setSearch] = useState(initialSearch);
   const searchQuery = search.trim().toLowerCase();
 
+  // Load the complete board once when this client component mounts.
   useEffect(() => {
     fetchBoard();
   }, [fetchBoard]);
 
+  // Connect to live board events only after the initial board request succeeds.
   useBoardEvents(hasLoaded);
 
   const handleAssigneeChange = useCallback(
     (name: string | null) => {
+      // Keep the visible filter and the shareable URL in sync.
       setSelectedAssignee(name);
       replaceFilterParameter("assignee", name);
 
+      // Restore the complete board after removing an assignee filter.
       if (name === null) {
         void fetchBoard();
       }
@@ -146,6 +105,8 @@ export function Board({
     replaceFilterParameter("search", value);
   }, []);
 
+  // Drag-and-drop reports an index from the filtered list. Convert it to the
+  // matching index in the full column so hidden tasks keep their positions.
   const getBoardIndex = useCallback(
     (status: TaskStatus, visibleIndex: number) => {
       if (!selectedAssignee && !selectedPriority && searchQuery.length === 0) {
@@ -155,7 +116,7 @@ export function Board({
       const tasks = useBoardStore.getState()[status];
       const visibleTasks = tasks.filter(
         (task) =>
-          matchesFilters(
+          matchesTaskFilters(
             task,
             selectedAssignee,
             selectedPriority,
@@ -177,9 +138,13 @@ export function Board({
   const handleDrop = useCallback(
     async (taskId: string, status: TaskStatus, index: number) => {
       setDragError(null);
+
+      // moveTask updates Zustand immediately and returns only the server
+      // patches required to persist the reordered tasks.
       const patches = moveTask(taskId, status, getBoardIndex(status, index));
       if (patches.length === 0) return;
 
+      // Mutation tracking prevents SSE echoes from racing the PATCH responses.
       patches.forEach(({ id }) => beginTaskMutation(id));
 
       try {
@@ -207,6 +172,8 @@ export function Board({
           }),
         );
       } catch (dropError) {
+        // If any PATCH fails, reload the authoritative board to roll back the
+        // optimistic move and keep every affected position consistent.
         setDragError(
           dropError instanceof Error
             ? dropError.message
@@ -227,7 +194,7 @@ export function Board({
 
   return (
     <BoardDndProvider onDrop={handleDrop}>
-      <main className="flex h-full min-h-0 flex-col gap-4 overflow-hidden rounded-md bg-board p-6">
+      <main className="flex h-full min-h-0 min-w-0 flex-col gap-3 overflow-hidden rounded-md bg-board p-3 sm:gap-4 sm:p-4 lg:p-6">
         <TopBar
           selectedAssignee={selectedAssignee}
           onSelectedAssigneeChange={handleAssigneeChange}
@@ -236,10 +203,8 @@ export function Board({
           search={search}
           onSearchChange={handleSearchChange}
         />
-        {(error || dragError) && (
-          <p className="text-sm text-destructive">{error ?? dragError}</p>
-        )}
-        <div className="flex min-h-0 flex-1 gap-4 overflow-x-auto overflow-y-hidden">
+        {dragError && <p className="text-sm text-destructive">{dragError}</p>}
+        <div className="flex min-h-0 flex-1 snap-x snap-mandatory gap-3 overflow-x-auto overflow-y-hidden overscroll-x-contain pb-1 sm:gap-4">
           {columns.map((column) => (
             <BoardColumn
               key={column.status}
@@ -250,6 +215,8 @@ export function Board({
             />
           ))}
         </div>
+
+        <ServerFailure open={Boolean(error)} onRetry={fetchBoard} />
       </main>
     </BoardDndProvider>
   );

@@ -15,6 +15,8 @@ interface TopBarProps {
   onSearchChange: (value: string) => void;
 }
 
+// Controlled filters live in Board so they can be combined and persisted in
+// the URL; TopBar only composes their individual controls.
 export function TopBar({
   selectedAssignee,
   onSelectedAssigneeChange,
@@ -24,7 +26,7 @@ export function TopBar({
   onSearchChange,
 }: TopBarProps) {
   return (
-    <div className="flex w-full items-center gap-3 rounded-lg border border-border bg-task p-2">
+    <div className="flex w-full flex-wrap items-center gap-2 rounded-lg border border-border bg-task p-2 sm:gap-3">
       <Assignee
         selectedUser={selectedAssignee}
         onSelectedUserChange={onSelectedAssigneeChange}

@@ -23,6 +23,9 @@ export function TaskDropZone({ id, status, index, empty }: TaskDropZoneProps) {
   const elementRef = useRef<HTMLDivElement>(null);
   const { manager, dragging, activeSource } = useBoardDnd();
   const [active, setActive] = useState(false);
+
+  // A task already occupies the slot immediately after itself. Hiding that
+  // duplicate avoids a no-op destination and prevents confusing movement.
   const duplicateSourceSlot =
     dragging &&
     activeSource?.status === status &&
@@ -31,6 +34,8 @@ export function TaskDropZone({ id, status, index, empty }: TaskDropZoneProps) {
   useEffect(() => {
     if (!manager || !elementRef.current || duplicateSourceSlot) return;
 
+    // Every gap between cards is registered as a destination with its future
+    // status and list index attached as drag data.
     const droppable = new Droppable<TaskDropData>(
       {
         id: `task-slot-${id}`,
@@ -48,6 +53,7 @@ export function TaskDropZone({ id, status, index, empty }: TaskDropZoneProps) {
     });
 
     return () => {
+      // A slot may be recreated as filtering or task positions change.
       removeOverListener();
       removeEndListener();
       droppable.destroy();

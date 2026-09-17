@@ -21,6 +21,7 @@ export function useBoardEvents(enabled: boolean) {
   useEffect(() => {
     if (!enabled) return;
 
+    // EventSource automatically reconnects if the network connection drops.
     const events = new EventSource(
       `${process.env.NEXT_PUBLIC_API_URL}/api/events`
     );
@@ -64,6 +65,7 @@ export function useBoardEvents(enabled: boolean) {
     };
 
     return () => {
+      // Close the stream when the board unmounts or live updates are disabled.
       events.close();
     };
   }, [enabled, receiveRemoteDeletion, receiveRemoteTask]);

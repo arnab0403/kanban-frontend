@@ -16,6 +16,7 @@ interface SectionProps {
   loading?: boolean;
 }
 
+/** Renders one status column, including loading, empty, and populated states. */
 export function Section({
   status,
   title,
@@ -26,7 +27,7 @@ export function Section({
   loading,
 }: SectionProps) {
   return (
-    <section className="flex h-full min-h-0 flex-1 flex-col gap-4 overflow-hidden rounded-xl bg-secondary px-2 py-4">
+    <section className="flex h-full min-h-0 min-w-0 flex-1 flex-col gap-3 overflow-hidden rounded-xl bg-secondary px-2 py-3 sm:gap-4 sm:py-4">
       <header className="flex shrink-0 items-center justify-between">
         <div className="flex items-center gap-2">
           <Loader className="size-4 shrink-0 text-muted-foreground" />
@@ -46,9 +47,14 @@ export function Section({
         </div>
       </header>
 
+      {/* Slots before and after cards make every insertion position droppable. */}
       <div className="flex min-h-0 flex-1 flex-col overflow-y-auto [scrollbar-gutter:stable]">
         {loading
-          ? Array.from({ length: 3 }, (_, index) => <ShimmerTask key={index} />)
+          ? <div className="flex flex-col gap-2">
+              {Array.from({ length: 3 }, (_, index) => (
+                <ShimmerTask key={index} />
+              ))}
+            </div>
           : tasks.length === 0
             ? <TaskDropZone id={`${status}-empty`} status={status} index={0} empty />
             : <>

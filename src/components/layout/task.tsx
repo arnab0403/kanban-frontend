@@ -29,6 +29,8 @@ interface DeletedTaskEntry {
   timeout: ReturnType<typeof setTimeout>;
 }
 
+// Keep recently deleted tasks outside React state so the toast action remains
+// usable even if the original card component has already unmounted.
 const deletedTasks = new Map<string, DeletedTaskEntry>();
 
 function rememberDeletedTask(task: TaskRecord) {
@@ -55,6 +57,8 @@ async function restoreDeletedTask(taskId: string) {
   const { title, description, priority, assignee, status, position } = entry.task;
 
   try {
+    // Undo recreates the task because the original record was deleted on the
+    // server. The backend assigns the new record's id and version.
     const response = await fetch(`${process.env.NEXT_PUBLIC_API_URL}/api/tasks`, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
@@ -92,26 +96,30 @@ function showDeletedTaskToast(task: TaskRecord) {
 }
 
 export function Task({ task, index }: { task: TaskRecord; index: number }) {
+  // The hook binds dnd-kit to the outer card element through this ref.
   const draggableRef = useTaskDraggable(task.id, task.status, index);
   const displayTitle =
     task.title.length > 25 ? `${task.title.slice(0, 25)}...` : task.title;
   const [open, setOpen] = useState(false);
   const [draft, setDraft] = useState(task);
   const [saving, setSaving] = useState(false);
-  const [saveError, setSaveError] = useState<string | null>(null);
   const [deleting, setDeleting] = useState(false);
   const [deleteError, setDeleteError] = useState<string | null>(null);
   const beginTaskMutation = useBoardStore((state) => state.beginTaskMutation);
+  const applyOptimisticTask = useBoardStore((state) => state.applyOptimisticTask);
+  const rollbackTask = useBoardStore((state) => state.rollbackTask);
   const completeTaskMutation = useBoardStore((state) => state.completeTaskMutation);
   const completeTaskDeletion = useBoardStore((state) => state.completeTaskDeletion);
   const failTaskMutation = useBoardStore((state) => state.failTaskMutation);
+
+  // Compare only editable fields so server-managed metadata cannot make the
+  // form appear dirty.
   const hasUnsavedChanges = editableFields.some(
     (field) => draft[field] !== task[field],
   );
 
   function openEditor() {
     setDraft(task);
-    setSaveError(null);
     setOpen(true);
   }
 
@@ -127,6 +135,7 @@ export function Task({ task, index }: { task: TaskRecord; index: number }) {
 
     if (saving) return;
 
+    // This path covers the close button, Escape, overlay click, and Cancel.
     if (
       hasUnsavedChanges &&
       !window.confirm("Discard your unsaved task changes?")
@@ -140,8 +149,8 @@ export function Task({ task, index }: { task: TaskRecord; index: number }) {
   async function handleSubmit(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
     setSaving(true);
-    setSaveError(null);
 
+    // Send only fields that changed instead of replacing the entire task.
     const changes = Object.fromEntries(
       editableFields
         .filter((field) => draft[field] !== task[field])
@@ -154,7 +163,19 @@ export function Task({ task, index }: { task: TaskRecord; index: number }) {
       return;
     }
 
+    const previousTask = { ...task };
+    const optimisticTask = {
+      ...task,
+      ...changes,
+      updatedAt: new Date().toISOString(),
+    } as TaskRecord;
+
+    // Update the card immediately. Mutation tracking temporarily queues SSE
+    // echoes until the PATCH response confirms or rejects this edit.
     beginTaskMutation(task.id);
+    applyOptimisticTask(optimisticTask);
+    setOpen(false);
+
     try {
       const response = await fetch(`${process.env.NEXT_PUBLIC_API_URL}/api/tasks/${task.id}`, {
         method: "PATCH",
@@ -167,10 +188,16 @@ export function Task({ task, index }: { task: TaskRecord; index: number }) {
       }
 
       completeTaskMutation((await response.json()) as TaskRecord);
-      setOpen(false);
     } catch (error) {
+      // Restore the snapshot if persistence fails, then release queued events.
+      rollbackTask(previousTask);
       failTaskMutation(task.id);
-      setSaveError(error instanceof Error ? error.message : "Failed to update task");
+      toast.error("Task update failed", {
+        description:
+          error instanceof Error
+            ? `${error.message}. Your changes were reverted.`
+            : "Your changes were reverted.",
+      });
     } finally {
       setSaving(false);
     }
@@ -179,6 +206,8 @@ export function Task({ task, index }: { task: TaskRecord; index: number }) {
   async function handleDelete() {
     setDeleting(true);
     setDeleteError(null);
+
+    // Hold matching SSE events until the DELETE response becomes authoritative.
     beginTaskMutation(task.id);
 
     try {
@@ -191,6 +220,8 @@ export function Task({ task, index }: { task: TaskRecord; index: number }) {
       }
 
       completeTaskDeletion(task.id);
+
+      // Keep the deleted payload in memory for the toast's five-second undo.
       showDeletedTaskToast(task);
     } catch (error) {
       failTaskMutation(task.id);
@@ -202,14 +233,17 @@ export function Task({ task, index }: { task: TaskRecord; index: number }) {
 
   return (
     <>
-      <div ref={draggableRef} className="touch-none cursor-grab active:cursor-grabbing">
-        <div data-task-card className="group/task flex flex-col gap-3 rounded-xl bg-task p-4 transition-[transform,box-shadow] duration-150">
+      <div
+        ref={draggableRef}
+        className="touch-manipulation cursor-grab active:cursor-grabbing"
+      >
+        <div data-task-card className="group/task flex flex-col gap-3 rounded-xl bg-task p-3 transition-[transform,box-shadow] duration-150 sm:p-4">
         <div className="flex items-start justify-between gap-3">
-          <div className="flex flex-col gap-1">
+          <div className="flex min-w-0 flex-1 flex-col gap-1">
             <span className="text-xs text-muted-foreground">DEMO-{task.id}</span>
             <div className="flex items-center gap-2">
               <Loader className="size-4 shrink-0 text-muted-foreground" />
-              <p className="text-sm font-medium text-foreground" title={task.title}>
+              <p className="truncate text-sm font-medium text-foreground" title={task.title}>
                 {displayTitle}
               </p>
             </div>
@@ -218,9 +252,10 @@ export function Task({ task, index }: { task: TaskRecord; index: number }) {
             type="button"
             variant="ghost"
             size="icon-sm"
-            className="cursor-pointer ml-auto opacity-0 transition-opacity group-hover/task:opacity-100 group-focus-within/task:opacity-100"
+            className="ml-auto shrink-0 cursor-pointer opacity-100 transition-opacity sm:opacity-0 sm:group-hover/task:opacity-100 sm:group-focus-within/task:opacity-100"
             aria-label={`Edit ${task.title}`}
             onClick={openEditor}
+            disabled={saving || deleting}
           >
             <Pencil className="text-neutral-400" />
           </Button>
@@ -228,10 +263,10 @@ export function Task({ task, index }: { task: TaskRecord; index: number }) {
             type="button"
             variant="destructive"
             size="icon-sm"
-            className="cursor-pointer opacity-0 transition-opacity group-hover/task:opacity-100 group-focus-within/task:opacity-100"
+            className="shrink-0 cursor-pointer opacity-100 transition-opacity sm:opacity-0 sm:group-hover/task:opacity-100 sm:group-focus-within/task:opacity-100"
             aria-label={`Delete ${task.title}`}
             onClick={handleDelete}
-            disabled={deleting}
+            disabled={saving || deleting}
           >
             <Trash2 />
           </Button>
@@ -257,10 +292,6 @@ export function Task({ task, index }: { task: TaskRecord; index: number }) {
             <DialogDescription>Update the details for {task.id}.</DialogDescription>
           </DialogHeader>
           <form className="grid gap-4" onSubmit={handleSubmit}>
-            <div className="grid gap-2">
-              <Label htmlFor={`task-id-${task.id}`}>ID</Label>
-              <Input id={`task-id-${task.id}`} value={draft.id} readOnly />
-            </div>
             <div className="grid gap-2">
               <Label htmlFor={`task-title-${task.id}`}>Title</Label>
               <Input id={`task-title-${task.id}`} value={draft.title} onChange={(event) => updateField("title", event.target.value)} required />
@@ -297,7 +328,6 @@ export function Task({ task, index }: { task: TaskRecord; index: number }) {
               <Label htmlFor={`task-updated-${task.id}`}>Updated at</Label>
               <Input id={`task-updated-${task.id}`} value={draft.updatedAt} readOnly />
             </div>
-            {saveError && <p className="text-sm text-destructive">{saveError}</p>}
             <DialogFooter>
               <Button type="button" variant="outline" onClick={() => handleOpenChange(false)} disabled={saving}>Cancel</Button>
               <Button type="submit" disabled={saving}>{saving ? "Saving..." : "Save changes"}</Button>

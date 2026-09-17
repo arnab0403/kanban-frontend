@@ -1,5 +1,6 @@
 import { Skeleton } from "@/components/ui/skeleton";
 
+/** Matches the task-card layout while the initial board request is pending. */
 export function ShimmerTask() {
   return (
     <div className="flex flex-col gap-3 rounded-xl bg-task p-4">
