@@ -12,6 +12,7 @@ interface SectionProps {
   completed: number;
   total: number;
   tasks: TaskRecord[];
+  nextPosition: number;
   loading?: boolean;
 }
 
@@ -21,6 +22,7 @@ export function Section({
   completed,
   total,
   tasks,
+  nextPosition,
   loading,
 }: SectionProps) {
   return (
@@ -39,7 +41,7 @@ export function Section({
           </button>
           <CreateTaskDialog
             status={status}
-            position={Math.max(0, ...tasks.map((task) => task.position)) + 1}
+            position={nextPosition}
           />
         </div>
       </header>

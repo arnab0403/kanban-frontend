@@ -12,6 +12,12 @@ const STATUSES: TaskStatus[] = ["todo", "in-progress", "done", "backlog"];
 
 type Buckets = Record<TaskStatus, TaskRecord[]>;
 
+interface TaskLocation {
+  task: TaskRecord;
+  status: TaskStatus;
+  index: number;
+}
+
 export interface TaskMovePatch {
   id: string;
   changes: Partial<Pick<TaskRecord, "status" | "position">>;
@@ -30,9 +36,11 @@ interface BoardState extends Buckets {
   loading: boolean;
   error: string | null;
   hasLoaded: boolean;
+
   fetchBoard: () => Promise<void>;
   updateTask: (task: TaskRecord) => void;
   removeTask: (taskId: string) => void;
+
   beginTaskMutation: (taskId: string) => void;
   completeTaskMutation: (task: TaskRecord) => void;
   completeTaskDeletion: (taskId: string) => void;
@@ -50,11 +58,22 @@ function isSupportedStatus(status: TaskStatus) {
   return STATUSES.includes(status);
 }
 
-function findTask(state: Buckets, taskId: string) {
+function findTaskLocation(state: Buckets, taskId: string): TaskLocation | undefined {
   for (const status of STATUSES) {
-    const task = state[status].find((currentTask) => currentTask.id === taskId);
-    if (task) return task;
+    const index = state[status].findIndex((task) => task.id === taskId);
+    if (index !== -1) {
+      return { task: state[status][index], status, index };
+    }
   }
+}
+
+function positionTasks(tasks: TaskRecord[], status: TaskStatus) {
+  return tasks.map((task, index) => {
+    const position = index + 1;
+    if (task.status === status && task.position === position) return task;
+
+    return { ...task, status, position };
+  });
 }
 
 function beginMutation(taskId: string) {
@@ -85,31 +104,49 @@ export const useBoardStore = create<BoardState>((set, get) => ({
     set((state) => {
       // A lower version is stale, while an equal version is an SSE/API echo
       // that has already been applied.
-      const currentTask = findTask(state, task.id);
-      if (currentTask && currentTask.version >= task.version) return state;
+      const location = findTaskLocation(state, task.id);
+      if (location && location.task.version >= task.version) return state;
 
-      // Remove the old copy from every bucket because the task's status may
-      // have changed, then insert the latest server copy into its new bucket.
-      const next = emptyBuckets();
-      for (const status of STATUSES) {
-        next[status] = state[status].filter((currentTask) => currentTask.id !== task.id);
+      // A newly created task only changes its destination bucket.
+      if (!location) {
+        const targetTasks = [...state[task.status], task].sort(
+          (a, b) => a.position - b.position,
+        );
+        return { [task.status]: targetTasks } as Partial<BoardState>;
       }
-      next[task.status].push(task);
 
-      // Keep each column in the same order as the server-side position values.
-      for (const status of STATUSES) {
-        next[status].sort((a, b) => a.position - b.position);
+      // An edit that keeps the same status replaces only that column's array.
+      if (location.status === task.status) {
+        const nextTasks = [...state[location.status]];
+        nextTasks[location.index] = task;
+        nextTasks.sort((a, b) => a.position - b.position);
+        return { [location.status]: nextTasks } as Partial<BoardState>;
       }
-      return next;
+
+      // A status change replaces only the source and destination arrays.
+      const sourceTasks = state[location.status].filter(
+        (currentTask) => currentTask.id !== task.id,
+      );
+      const targetTasks = [...state[task.status], task].sort(
+        (a, b) => a.position - b.position,
+      );
+
+      return {
+        [location.status]: sourceTasks,
+        [task.status]: targetTasks,
+      } as Partial<BoardState>;
     });
   },
   removeTask: (taskId) => {
     set((state) => {
-      const next = emptyBuckets();
-      for (const status of STATUSES) {
-        next[status] = state[status].filter((task) => task.id !== taskId);
-      }
-      return next;
+      const location = findTaskLocation(state, taskId);
+      if (!location) return state;
+
+      return {
+        [location.status]: state[location.status].filter(
+          (task) => task.id !== taskId,
+        ),
+      } as Partial<BoardState>;
     });
   },
   beginTaskMutation: (taskId) => {
@@ -146,6 +183,8 @@ export const useBoardStore = create<BoardState>((set, get) => ({
   receiveRemoteTask: (task) => {
     if (!isSupportedStatus(task.status)) return;
 
+
+    // check if any pending mutation exists for this task. If so, queue the event for later processing.
     if (pendingMutationCounts.has(task.id)) {
       const queuedEvent = queuedRemoteEvents.get(task.id);
       if (
@@ -169,61 +208,46 @@ export const useBoardStore = create<BoardState>((set, get) => ({
   },
   moveTask: (taskId, targetStatus, targetIndex) => {
     const state = get();
+    const location = findTaskLocation(state, taskId);
+    if (!location) return [];
 
-    // Snapshot the current buckets and locate the task before calculating the
-    // new order. The snapshot is also used to determine which API PATCH calls
-    // are required after the optimistic move.
-    const previous = emptyBuckets();
-    let sourceTask: TaskRecord | undefined;
-    let sourceStatus: TaskStatus | undefined;
-    let sourceIndex = -1;
+    const { task: sourceTask, status: sourceStatus, index: sourceIndex } = location;
+    const sameStatus = sourceStatus === targetStatus;
+    let nextSource: TaskRecord[];
+    let nextTarget: TaskRecord[] | undefined;
 
-    for (const status of STATUSES) {
-      previous[status] = [...state[status]];
-      const index = state[status].findIndex((task) => task.id === taskId);
-      if (index !== -1) {
-        sourceTask = state[status][index];
-        sourceStatus = status;
-        sourceIndex = index;
-      }
-    }
+    if (sameStatus) {
+      const reorderedTasks = [...state[sourceStatus]];
+      reorderedTasks.splice(sourceIndex, 1);
 
-    if (!sourceTask || !sourceStatus) return [];
+      // Removing an item shifts later indexes left. Compensate when moving down
+      // within the same column so the task lands in the intended drop slot.
+      const adjustedIndex = sourceIndex < targetIndex ? targetIndex - 1 : targetIndex;
+      const insertAt = Math.max(0, Math.min(adjustedIndex, reorderedTasks.length));
+      reorderedTasks.splice(insertAt, 0, sourceTask);
+      nextSource = positionTasks(reorderedTasks, sourceStatus);
+    } else {
+      const sourceTasks = state[sourceStatus].filter((task) => task.id !== taskId);
+      const targetTasks = [...state[targetStatus]];
+      const insertAt = Math.max(0, Math.min(targetIndex, targetTasks.length));
+      targetTasks.splice(insertAt, 0, { ...sourceTask, status: targetStatus });
 
-    // First remove the dragged task from its original bucket. It is inserted
-    // into the target bucket below, which also handles cross-column moves.
-    const next = emptyBuckets();
-    for (const status of STATUSES) {
-      next[status] = previous[status].filter((task) => task.id !== taskId);
-    }
-
-    // Removing an item shifts later indexes left. Compensate when moving down
-    // within the same column so the task lands in the intended drop slot.
-    const adjustedIndex =
-      sourceStatus === targetStatus && sourceIndex < targetIndex
-        ? targetIndex - 1
-        : targetIndex;
-    const insertAt = Math.max(0, Math.min(adjustedIndex, next[targetStatus].length));
-    next[targetStatus].splice(insertAt, 0, { ...sourceTask, status: targetStatus });
-
-    // Positions are one-based in the API. Renumber every affected column so
-    // tasks keep a stable order after the board is fetched again.
-    for (const status of STATUSES) {
-      next[status] = next[status].map((task, index) => ({
-        ...task,
-        status,
-        position: index + 1,
-      }));
+      nextSource = positionTasks(sourceTasks, sourceStatus);
+      nextTarget = positionTasks(targetTasks, targetStatus);
     }
 
     // Compare the old and new board states and return only changed fields.
     // The caller uses these patches with PATCH /api/tasks/:id.
     const previousById = new Map(
-      STATUSES.flatMap((status) => previous[status]).map((task) => [task.id, task])
+      (sameStatus
+        ? state[sourceStatus]
+        : [...state[sourceStatus], ...state[targetStatus]]
+      ).map((task) => [task.id, task]),
     );
     const patches: TaskMovePatch[] = [];
+    const nextTasks = sameStatus ? nextSource : [...nextSource, ...nextTarget!];
 
-    for (const task of STATUSES.flatMap((status) => next[status])) {
+    for (const task of nextTasks) {
       const oldTask = previousById.get(task.id);
       if (!oldTask) continue;
 
@@ -237,7 +261,16 @@ export const useBoardStore = create<BoardState>((set, get) => ({
 
     // Apply the move immediately for responsive drag-and-drop feedback. The
     // board component reloads server state if any PATCH request fails.
-    if (patches.length > 0) set(next);
+    if (patches.length > 0) {
+      if (sameStatus) {
+        set({ [sourceStatus]: nextSource } as Partial<BoardState>);
+      } else {
+        set({
+          [sourceStatus]: nextSource,
+          [targetStatus]: nextTarget!,
+        } as Partial<BoardState>);
+      }
+    }
     return patches;
   },
   fetchBoard: async () => {

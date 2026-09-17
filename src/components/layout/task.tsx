@@ -2,6 +2,7 @@
 
 import { useState, type FormEvent } from "react";
 import { Loader, Pencil, Trash2 } from "lucide-react";
+import { toast } from "sonner";
 import type { TaskPriority, TaskRecord, TaskStatus } from "@/lib/tasks";
 import { useBoardStore } from "@/store/board";
 import { Button } from "@/components/ui/button";
@@ -21,6 +22,75 @@ const editableFields = [
   "position",
 ] as const;
 
+const UNDO_DELETE_WINDOW_MS = 5_000;
+
+interface DeletedTaskEntry {
+  task: TaskRecord;
+  timeout: ReturnType<typeof setTimeout>;
+}
+
+const deletedTasks = new Map<string, DeletedTaskEntry>();
+
+function rememberDeletedTask(task: TaskRecord) {
+  const existingEntry = deletedTasks.get(task.id);
+  if (existingEntry) clearTimeout(existingEntry.timeout);
+
+  const timeout = setTimeout(() => {
+    deletedTasks.delete(task.id);
+  }, UNDO_DELETE_WINDOW_MS);
+
+  deletedTasks.set(task.id, { task, timeout });
+}
+
+async function restoreDeletedTask(taskId: string) {
+  const entry = deletedTasks.get(taskId);
+  if (!entry) {
+    toast.error("The undo period has expired");
+    return;
+  }
+
+  clearTimeout(entry.timeout);
+  deletedTasks.delete(taskId);
+
+  const { title, description, priority, assignee, status, position } = entry.task;
+
+  try {
+    const response = await fetch(`${process.env.NEXT_PUBLIC_API_URL}/api/tasks`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        title,
+        description,
+        priority,
+        assignee,
+        status,
+        position,
+      }),
+    });
+
+    if (!response.ok) {
+      throw new Error(`Task restoration failed with ${response.status}`);
+    }
+
+    useBoardStore.getState().updateTask((await response.json()) as TaskRecord);
+    toast.success("Task restored");
+  } catch (error) {
+    toast.error(error instanceof Error ? error.message : "Failed to restore task");
+  }
+}
+
+function showDeletedTaskToast(task: TaskRecord) {
+  rememberDeletedTask(task);
+  toast.success("Task deleted", {
+    description: task.title,
+    duration: UNDO_DELETE_WINDOW_MS,
+    action: {
+      label: "Undo",
+      onClick: () => void restoreDeletedTask(task.id),
+    },
+  });
+}
+
 export function Task({ task, index }: { task: TaskRecord; index: number }) {
   const draggableRef = useTaskDraggable(task.id, task.status, index);
   const displayTitle =
@@ -35,6 +105,9 @@ export function Task({ task, index }: { task: TaskRecord; index: number }) {
   const completeTaskMutation = useBoardStore((state) => state.completeTaskMutation);
   const completeTaskDeletion = useBoardStore((state) => state.completeTaskDeletion);
   const failTaskMutation = useBoardStore((state) => state.failTaskMutation);
+  const hasUnsavedChanges = editableFields.some(
+    (field) => draft[field] !== task[field],
+  );
 
   function openEditor() {
     setDraft(task);
@@ -44,6 +117,24 @@ export function Task({ task, index }: { task: TaskRecord; index: number }) {
 
   function updateField<Key extends keyof TaskRecord>(key: Key, value: TaskRecord[Key]) {
     setDraft((current) => ({ ...current, [key]: value }));
+  }
+
+  function handleOpenChange(nextOpen: boolean) {
+    if (nextOpen) {
+      openEditor();
+      return;
+    }
+
+    if (saving) return;
+
+    if (
+      hasUnsavedChanges &&
+      !window.confirm("Discard your unsaved task changes?")
+    ) {
+      return;
+    }
+
+    setOpen(false);
   }
 
   async function handleSubmit(event: FormEvent<HTMLFormElement>) {
@@ -100,6 +191,7 @@ export function Task({ task, index }: { task: TaskRecord; index: number }) {
       }
 
       completeTaskDeletion(task.id);
+      showDeletedTaskToast(task);
     } catch (error) {
       failTaskMutation(task.id);
       setDeleteError(error instanceof Error ? error.message : "Failed to delete task");
@@ -158,7 +250,7 @@ export function Task({ task, index }: { task: TaskRecord; index: number }) {
         </div>
       </div>
 
-      <Dialog open={open} onOpenChange={setOpen}>
+      <Dialog open={open} onOpenChange={handleOpenChange}>
         <DialogContent>
           <DialogHeader>
             <DialogTitle>Edit task</DialogTitle>
@@ -207,7 +299,7 @@ export function Task({ task, index }: { task: TaskRecord; index: number }) {
             </div>
             {saveError && <p className="text-sm text-destructive">{saveError}</p>}
             <DialogFooter>
-              <Button type="button" variant="outline" onClick={() => setOpen(false)} disabled={saving}>Cancel</Button>
+              <Button type="button" variant="outline" onClick={() => handleOpenChange(false)} disabled={saving}>Cancel</Button>
               <Button type="submit" disabled={saving}>{saving ? "Saving..." : "Save changes"}</Button>
             </DialogFooter>
           </form>

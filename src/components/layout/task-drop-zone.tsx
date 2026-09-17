@@ -57,7 +57,7 @@ export function TaskDropZone({ id, status, index, empty }: TaskDropZoneProps) {
   return (
     <div
       ref={elementRef}
-      aria-hidden="true"
+      aria-hidden={empty ? undefined : true}
       className={cn(
         "flex h-2 shrink-0 items-center justify-center rounded-lg border border-transparent text-xs text-muted-foreground transition-[height,background-color,border-color] duration-150",
         duplicateSourceSlot && "hidden",
@@ -66,7 +66,7 @@ export function TaskDropZone({ id, status, index, empty }: TaskDropZoneProps) {
         active && "h-14 border-ring bg-muted/70 text-foreground"
       )}
     >
-      {(active || (empty && dragging)) && "Drop task here"}
+      {active || (empty && dragging) ? "Drop task here" : empty ? "No tasks" : null}
     </div>
   );
 }
